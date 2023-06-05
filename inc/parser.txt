@@ -1,0 +1,451 @@
+%{//ovako?
+
+	#include<stdio.h>
+    #include<stdlib.h>
+    #include<iostream>
+    #include<string>
+    #include<sstream>
+    #include<algorithm> 
+	
+	#include<map> //moj dodatak
+
+    #include"assembler.h"
+
+    using namespace std;
+
+    extern FILE* yyout;
+    extern int yylineno;
+
+    Assembler *assembler=new Assembler(); //ceo Asembler
+    string globalSection;  //trenutna sekcija?
+    int offsetSection=0; //pomeraj u okviru sekcije
+    int num=0;
+
+    List *args=new List(); //
+
+    List *globalSymbols=new List();
+  
+    void yyerror(const char *msg);
+    int isRegister(char* c);
+    string IntToHex(int num); //treba izbaciti, proveri kako funkcionisu vektori
+
+    int yylex(void);
+	
+	map<string, Symbol> symMap; // = {}; , std::map, konstruktor
+	map<string, string> symType;
+
+%}
+
+%union {
+    char* literal;
+    char* identif;
+    int reg;
+    char* csr;
+}
+
+%token GLOBAL
+%token EXTERN
+%token SECTION
+%token WORD
+%token SKIP
+%token END
+
+%token INLINECOMM
+%token COMMA 
+%token COLON 
+%token PLUS 
+%token SQBRLEFT 
+%token SQBRRIGHT 
+%token DOLLAR 
+%token STAR 
+%token PERCENT 
+
+%token <identif> IDENTIF 
+%token <reg> REG
+%token <literal> HEX 
+%token <literal> DEC 
+
+%%
+
+
+line: /* {printf("Empty input\n");} */
+    | newline line{}
+    | symtable line {}
+    | directives line {}
+	
+    | jumps line{}
+    | atomic line{}
+    | arithm line {}
+    | logic line{}
+    | shift line{}
+    | data line{}
+	| other line{}
+    | end {} 
+    ;
+
+
+newline: NL
+        {
+            yylineno++;
+        }
+
+
+symtable: SECTION IDENTIF NL
+        {
+            globalSection=$2; 
+            offsetSection=0; //idemo logikom da je se sekcija ne moze nastavljati negde drugde
+            std::cout<<"Section: "<<globalSection<<endl;
+			
+            yylineno++;
+				if(!symMap.contains($2))
+                { 
+				num=assembler->getNSym();
+                Symbol *s=new Symbol(globalSection,globalSection,0,"local",num); //ime sekcije
+				assembler->addSymTab(s);
+              //assembler->getSections()->addSection($2);// TREBA SECTION MAP
+                assembler->addSectionTab(s);
+				symMap.insert({$2, s});
+                printf("Number in table: %d\n", s->getNum());
+                }
+                else
+                { 
+                    cout<<"***Error in line"<<yylineno<<"There is already a symbol with the label '"<<s->getLabel()<<"'"<<endl;
+                    return -1;
+                }
+   
+        }
+    |   IDENTIF COLON  //label: doesnt have to end in new line
+        {
+                num=assembler->getNSym();
+                string localORglobal="local";
+
+				if(globalSym.contains($1))
+				{
+					localORglobal="global";
+				}
+                
+        		if(!symMap.contains(tek->name)){
+					num=assembler->getNSym();
+					Symbol *s=new Symbol($1,globalSection,offsetSection,localORglobal,num);
+					assembler->addSymTab(s);
+					symMap.insert({tek->name, s});
+				}
+				else
+				{
+					cout<<"***Error in line"<<yylineno<<"There is already a symbol with the label '"<<s->getLabel()<<"'"<<endl;
+					return -1;
+				}
+				
+				//fali deo za jednoprolazni asm
+        }
+    |   EXTERN argList NL
+    {
+            yylineno++;
+			
+                Elem *tek;
+                for(tek=args->getFirst();tek!=nullptr;tek=tek->next)
+                {
+					if(!symMap.contains(tek->name)) //visak, vec definisano u argList?
+					{
+						num=assembler->getNSym();
+						Symbol *s=new Symbol(tek->name,"UND",0,"global",num);
+						assembler->addSymTab(s);
+						symMap.insert({tek->name, s});
+					}
+					else
+					{
+						cout<<"***Error in line"<<yylineno<<"There is already a symbol with the label '"<<s->getLabel()<<"'"<<endl;
+						return -1;
+					}	
+               }
+            globalSymbols->outputList();
+			args->~List(); 
+    }
+    ;
+
+	directives: GLOBAL argList NL //gotovo
+    {
+            yylineno++;
+            args->~List(); 
+    }
+    |   SKIP DEC NL
+    {
+        yylineno++;
+        Instruction *i=new Instruction($2); //proveri da li radi kako treba
+      //assembler->getSections()->addInstruction(globalSection, i);
+        assembler->getSection(globalSection)->addInstruction(i);
+        cout<<"Directive .skip added!"<<endl;
+        offsetSection+=$2;
+    }
+    |   SKIP HEX NL
+    {
+        yylineno++;
+        Instruction *i=new Instruction($2); //jos jednom ovo konvertovanje, plus +48 sta je bese u Instruction kontruktoru
+      //assembler->getSections()->addInstruction(globalSection, i);
+       assembler->getSection(globalSection)->addInstruction(i); //Kako je isto kao dec?
+        cout<<"Directive .skip added!"<<endl;
+        offsetSection+=$2;
+    }
+    |   WORD wordArgList NL
+    {
+        yylineno++;
+        if(pass==1)
+        {
+                
+        }
+        else
+        {
+                Elem *tek;
+                args->outputList();
+                int b=0;
+                for(tek=args->getFirst();tek!=nullptr;tek=tek->next)
+                {
+                    if(assembler->isInSymTab(tek->name)==false) //there isn't this symbol in symbol table
+                    {
+                        cout<<"***Error in line:"<<yylineno<<" There is not a symbol with the label '"<<tek->name<<"'"<<endl;
+                        return -1;
+                    }
+                    else  //there is this symbol in symbol table
+                    {
+                        SymTab *st=assembler->findSymTab(tek->name);
+                        if(st->sym->getLocal()=="local")
+                        {
+                            //int to hex
+                            std::stringstream ss;
+                            ss<< hex << st->sym->getOffset();
+                            string res ( ss.str() );
+
+                            string res1;
+
+                            if(res.length()!=4)
+                            {                
+                                for(int i=0;i<4-res.length();i++)
+                                {
+                                    res1=res1+"0";
+                                }
+
+                                cout<<"Nule: "<<res1<<endl;
+
+                                res1=res1+res;
+                                cout<<"cat:"<<res1<<endl;   
+                            } 
+                            else    //if the length is 4 then it is normal
+                            {
+                                res1=res;
+                            }
+
+                            cout<<"Lenghth: "<<res1.length()<<endl;
+                            
+                            Instruction *i=new Instruction(res1[2],res1[3],res1[0],res1[1]); //little endian
+                            assembler->getSection()->addInstruction(i);
+                            cout<<"Directive .word added!"<<endl;
+
+                            if(st->sym->getSection()=="ABS")
+                            {
+                                //then there is no entry in the relocatin table
+                                cout<<"No relocation entry for this symbol!"<<endl;
+                            }
+                            else
+                            {
+                                SymTab *stsection=assembler->findSymTab(st->sym->getSection()); //section where the symbol is
+
+                                Reloc *rel=new Reloc(globalSection,offsetSection+b,"R_X86_64_16",stsection->sym->getNum(),st->sym->getLabel()); 
+                                //offset of the current section where the instuction is, not the section where the symbol is
+                                //LOCAL:number of the section where the symbol is
+                                
+                                b+=2;
+
+                                assembler->addRelocTab(rel);
+                                cout<<"Relocation added!"<<endl;
+                            }
+                        }
+                        else  //global-> 00 00
+                        {
+                            Instruction *i=new Instruction(2);
+                            assembler->getSection()->addInstruction(i);
+                            cout<<"Directive .word added!"<<endl;
+
+                            Reloc *rel=new Reloc(globalSection,offsetSection+b,"R_X86_64_16",st->sym->getNum(),st->sym->getLabel());   
+                            //offset of the current section where the instuction is, not the section where the symbol is
+                            //GLOBAL:number of the global symbol in the symtable
+
+                            b+=2;
+
+                            assembler->addRelocTab(rel);
+                            cout<<"Relocation added!"<<endl;  
+                        }
+                    }
+                }         
+        }   
+        offsetSection+=args->getLength()*2;
+        args->~List();      
+    }
+    |   WORD HEX NL
+    {
+        yylineno++;
+        if(pass==1)
+        {
+            
+        }
+        else
+        {
+            //int to hex
+            stringstream ss;
+            ss<< hex << $2;
+            string res ( ss.str() );
+
+            string res1;
+
+            if(res.length()!=4)
+            {                
+                for(int i=0;i<4-res.length();i++)
+                {
+                    res1=res1+"0";
+                }
+
+                cout<<"Nule: "<<res1<<endl;
+
+                res1=res1+res;
+                cout<<"cat:"<<res1<<endl;   
+            } 
+            else    //if the length is 4 then it is normal
+            {
+                res1=res;
+            }
+        
+            cout<<"Lenghth: "<<res1.length()<<endl;
+
+            Instruction *i=new Instruction(res1[2],res1[3],res1[0],res1[1]); //little endian
+            assembler->getSections()->addInstruction(globalSection, i);
+            cout<<"Directive .word added!"<<endl;
+        }
+        offsetSection+=2;
+    }
+    |   WORD DEC NL
+    {
+        yylineno++;
+        if(pass==1)
+        {
+            
+        }
+        else
+        {
+            //int to hex
+            stringstream ss;
+            ss<< hex << $2;
+            string res ( ss.str() );
+
+            string res1;
+
+            if(res.length()!=4)
+            {                
+                for(int i=0;i<4-res.length();i++)
+                {
+                    res1=res1+"0";
+                }
+
+                cout<<"Nule: "<<res1<<endl;
+
+                res1=res1+res;
+                cout<<"cat:"<<res1<<endl;   
+            } 
+            else    //if the length is 4 then it is normal
+            {
+                res1=res;
+            }
+
+           // string res = $2;
+          //  res.resize(4, '0'); //  prosir
+        
+            cout<<"Lenghth: "<<res1.length()<<endl;
+
+            Instruction *i=new Instruction(res1[2],res1[3],res1[0],res1[1]); //little endian
+            assembler->getSections()->addInstruction(globalSection, i);
+            cout<<"Directive .word added!"<<endl;
+        }
+
+        offsetSection+=2;
+    }
+    ;
+
+	
+	argList: argList COMMA IDENTIF 
+	{
+		//args->addBack($3); //zasto pozadi, da li treba da proverava postoji li vec elemnt sa takvim nazivom u tabeli simbola
+		if(symMap.contains($3)){
+			cout<<"Error, there are at least two deffintions of the same element";
+			return -1; //ovako vraca error i prekida parsiranje?
+		}else{
+			args->addBack($3);
+			globalSym.insert({$3, "global"});
+		}
+	}
+	| IDENTIF
+	{
+			if(symMap.contains($1)){
+			cout<<"Error, there are at least two deffintions of the same element";
+			return -1; //ovako vraca error i prekida parsiranje?
+		}else{
+			args->addBack($1);
+			globalSym.insert({$1, "global"});
+		}
+	}
+
+	wordArgList: wordArgList COMMA IDENTIF 
+	{
+			args->addBack($3);
+	}
+	| IDENTIF
+	{
+			args->addBack($1);
+	}
+
+    other:  HALT NL
+        {
+            Instruction *i=new Instruction(0+48,0+48); //ovo opet
+            assembler->getSection(globalSection)->addInstruction(i);
+            cout<<"Instruction HALT added!"<<endl;
+            offsetSection++;
+        }
+        | INT REG NL
+        {
+           yylineno++;
+           Instruction *i=new Instruction(1+48,0+48,$2,'f');//_48 je jer je char
+           assembler->getSection(globalSection)->addInstruction(i);
+           cout<<"Instructin INT added!"<<endl;           
+           offsetSection+=2;
+        }
+        | IRET NL
+        {
+            yylineno++;
+            Instruction *i=new Instruction(2+48,0+48);
+            assembler->getSection(globalSection)->addInstruction(i);
+            cout<<"Instruction IRET added!"<<endl;
+            offsetSection++;
+        }
+        | RET NL
+        {
+            yylineno++;
+            Instruction *i=new Instruction(4+48,0+48);
+            assembler->getSection(globalSection)->addInstruction(i);
+            cout<<"Instruction RET added!"<<endl;
+            offsetSection++;
+        }
+    ;
+
+    end: ENDFILE
+    {
+        cout<<"***Error in line"<<yylineno<<": The program has not ended with .end"<<endl;
+        return -1;
+    }
+    |
+    END 
+    {
+        cout<<"Pass ended:"<<pass<<endl;
+        //assembler->outputSymTab();
+       // assembler->getSections()->outputSections();
+       // assembler->outputRelocTab();
+        return 0;
+    }
+    ;
+%%

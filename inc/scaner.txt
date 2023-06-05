@@ -1,0 +1,163 @@
+%{
+    #include "myparser.tab.h"
+    #include<stdlib.h>
+
+    #define MAX_IDENT_SIZE 32
+
+    char* strcopy(const char *in);
+	
+	int getNum(const char *in);
+   
+    extern void yyerror(const char *msg);
+%}
+
+%option noyywrap
+
+
+INLINECOMM ("#"[^\n\r]*)
+COMMA (",")
+COLON (":")
+PLUS ("+")
+SQBRLEFT ("[")
+SQBRRIGHT ("]")
+DOLLAR ("$")
+STAR ("*")
+PERCENT ("%")
+
+IDENTIF ([A-Za-z_][A-Za-z0-9_]*)
+REG (r[0-15]|psw|pc|sp)
+CSR (status|handler|cause)
+HEX (0[Xx][0-9A-Fa-f]+)
+DEC ([0-9]+)
+
+HALT ("halt"|"HALT")
+INT ("int"|"INT")
+IRET ("iret"|"IRET")
+CALL ("call"|"CALL")
+RET ("ret"|"RET")
+JMP ("jmp"|"JMP")
+JEQ ("jeq"|"JEQ")
+JNE ("jne"|"JNE")
+JGT ("jgt"|"JGT")
+PUSH("push"|"PUSH")
+POP ("pop"|"POP")
+XCHG ("xchg"|"XCHG")
+ADD ("add"|"ADD")
+SUB ("sub"|"SUB")
+MUL ("mul"|"MUL")
+DIV ("div"|"DIV")
+CMP ("cmp"|"CMP")
+NOT ("not"|"NOT")
+AND ("and"|"AND")
+OR ("or"|"OR")
+XOR ("xor"|"XOR")
+TEST ("test"|"TEST")
+SHL ("shl"|"SHL")
+SHR ("shr"|"SHR")
+LDR("ldr"|"LDR")
+STR("str"|"STR")
+
+
+
+%%
+{INLINECOMM} {}
+\n          {return NL;}
+[ \t\r]*    {}
+".global"   {return GLOBAL;}
+".extern"   {return EXTERN;}
+".section"  {return SECTION;}
+".word"     {return WORD;}
+".skip"     {return SKIP;}
+".end"      {return END;}
+{HALT}      {return HALT;}
+{INT}       {return INT;}
+{IRET}      {return IRET;}
+{CALL}      {return CALL;}
+{RET}       {return RET;}
+{JMP}       {return JMP;}
+{JEQ}       {return JEQ;}
+{JNE}       {return JNE;}
+{JGT}       {return JGT;}
+{PUSH}      {return PUSH;}
+{POP}       {return POP;}
+{XCHG}      {return XCHG;}
+{ADD}       {return ADD;}
+{SUB}       {return SUB;}
+{MUL}       {return MUL;}
+{DIV}       {return DIV;}
+{CMP}       {return CMP;}
+{NOT}       {return NOT;}
+{AND}       {return AND;}
+{OR}        {return OR;}
+{XOR}       {return XOR;}
+{TEST}      {return TEST;}
+{SHL}       {return SHL;}
+{SHR}       {return SHR;}
+{LDR}       {return LDR;}
+{STR}       {return STR;}
+{IDENTIF}   {yylval.identif=strcopy(yytext); return IDENTIF;}
+{REG}       {yylval.reg=getNum(yytext)); return REG;}
+{CSR}		{yylval.csr=strcopy(yytext); return CSR;}
+{HEX}       {yylval.literal=hexToStr(yytext); return HEX;}
+{DEC}       {yylval.literal=decToStr(yytext)); return DEC;}      
+{COMMA}     {return COMMA;}
+{COLON}     {return COLON;}
+{PLUS}      {return PLUS;}
+{SQBRLEFT}  {return SQBRLEFT;}
+{SQBRRIGHT} {return SQBRRIGHT;}
+{DOLLAR}    {return DOLLAR;}
+{STAR}      {return STAR;}
+{PERCENT}   {return PERCENT;}    
+<<EOF>>     {return ENDFILE;}
+.           {printf("Unknown character in line %d, character '%s'.\n", yylineno,yytext); }
+
+
+%%
+
+
+char* strcopy(const char *in)
+{
+    size_t len = strnlen(in, MAX_IDENT_SIZE);
+    char* buf = (char*)malloc(len + 1);
+    strncpy(buf, in, len);
+    buf[len] = '\0';
+    return buf;
+}
+
+char* hexToStr(const char *in)
+{
+   // size_t len = strnlen(in, MAX_IDENT_SIZE+2);
+    char* buf = (char*)malloc(len - 1);
+	char* temp = (char*)malloc(len - 3);
+	for(int i = 0,int j=i+2; i<len-1; i++,j++){
+		temp[i] = buf[j];
+	}
+    strncpy(temp, in, len-2);
+    temp[len-2] = '\0';
+    return temp;
+}
+
+char* decToStr(const char* in) {
+	int num;
+	sscanf(in, "%d", &num);
+	sprintf(hexStr, "%x", num);
+	return hexStr;
+}
+
+int getNum(const char *in)
+{
+	if(strcmp(in, "psw"))
+	{
+		return 8; //psw nema?
+	}
+		else if(strcmp(in, "pc"))
+	{
+		return 15;
+	}
+		else if(strcmp(in, "sp"))
+	{
+		return 14;
+	}
+		
+	else return (int)in[1]; // DA LI TREBA IN[2] ZBOG %?
+}

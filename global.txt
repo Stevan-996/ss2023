@@ -1,0 +1,24 @@
+directives: GLOBAL argList NL //gotovo
+    {
+            yylineno++;
+			
+                Elem *tek;
+                for(tek=args->getFirst();tek!=nullptr;tek=tek->next)
+                {
+                    globalSymbols->addBack(tek->name);
+					if(!symMap.contains(tek->name)){
+						num=assembler->getNSym();
+						Symbol *s=new Symbol(tek->name,globalSection,offsetSection,"global",num);
+						assembler->addSymTab(s);
+						symMap.insert({tek->name, s});
+					}else{
+						cout<<"Error"<<endl;
+						return -1;
+				}
+					
+               }
+                globalSymbols->outputList();
+      
+            args->~List(); 
+    }
+
